@@ -1,0 +1,11 @@
+.DS_Store
+
+.settings
+
+*.jar
+
+cacerts
+
+project/classes
+
+
