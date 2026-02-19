@@ -24,6 +24,10 @@ public final class VectorFile {
     // fileName: ファイル名を指定してロード処理を行います.
     // 戻り値: VectorChunk[] が返却されます.
     public static final VectorChunk[] load(String fileName) {
+        if(!fileName.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
+            // 拡張子が存在しない場合は拡張子をセット.
+            fileName += VECTOR_GROUP_FILE_EXTENSION;
+        }
         int len;
         byte[] b, buf;
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
@@ -59,7 +63,7 @@ public final class VectorFile {
         DecodeBinary bd = new DecodeBinary(binary);
         // ファイルシンボルの確認.
         String simbol = bd.getString(4);
-        if(VECTOR_GROUP_FILE_SIMBOL != simbol) {
+        if(!VECTOR_GROUP_FILE_SIMBOL.equals(simbol)) {
             throw new MRagException("Not a VectorGroup file symbol");
         }
         // 最初にVectorChunk数を取得.
@@ -95,6 +99,10 @@ public final class VectorFile {
     // fileName: 保存先のファイル名を設定します.
     // chunks: 保存対象の VectorChunk 群を設定します.
     public static final void save(String fileName, VectorChunk[] chunks) {
+        if(!fileName.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
+            // 拡張子が存在しない場合は拡張子をセット.
+            fileName += VECTOR_GROUP_FILE_EXTENSION;
+        }
         FileOutputStream fo = null;
         BufferedOutputStream bo = null;
         try {
@@ -165,16 +173,17 @@ public final class VectorFile {
     // テキストをチャンク単位で分割.
     // text: 対象のテキストを設定します.
     // chunkSize: チャンク単位の文字列長を設定します.
-    // overlap: 次のチャンクに設定する文字列長を設定します.
+    // overlapSize: 次のチャンクに設定する文字列長を設定します.
     // 戻り値: チャンク単位で区切られた文字列が返却されます.
     public static final List<String> stringToChunks(
-        String text, int chunkSize, int overlap) {
+        String text, int chunkSize, int overlapSize) {
+        
         List<String> chunks = new ArrayList<String>();
         int i, j, len, lenJ, currentLen, bufLen;
         String para, current, chunk, buf, s;
         String[] paragraphs, sentences;
 
-        // 段落単位でまず分割.
+        // 2つの段落単位で、まず分割.
         paragraphs = text.split("\\n\\n+");
 
         // 段落分割したものを chunkSize 単位で整理する.
@@ -182,16 +191,21 @@ public final class VectorFile {
         len = paragraphs.length;
         for(i = 0; i < len; i ++) {
             para = paragraphs[i];
+            paragraphs[i] = null;
             currentLen = current.length();
             // chunkSize を超える current文字列の場合.
             if(currentLen + para.length() > chunkSize && currentLen > 0) {
                 chunks.add(current.trim());
-                // オーバーラップ: 末尾の一部を次のチャンクに引き継ぐ
-                current = new StringBuilder(current.substring(currentLen - overlap))
+                // [次のcurrent]オーバーラップ: 末尾の一部を次のチャンクに引き継ぐ
+                current = new StringBuilder(current.substring(currentLen - overlapSize))
                     .append("\n\n").append(para).toString();
+            } else if(current.length() > 0) {
+                // 連結元のcurrentが存在する場合.
+                current = new StringBuilder(current).append("\n\n").append(para).toString();
+            } else {
+                // 連結元のcurrentが存在しない場合.
+                current = para;
             }
-            // 利用しないので削除.
-            paragraphs[i] = null;
         }
         // currentの余りがある場合.
         current = current.trim();
@@ -217,7 +231,7 @@ public final class VectorFile {
                     if(bufLen + s.length() > chunkSize && bufLen > 0) {
                         result.add(buf.trim());
                         // オーバーラップ: 末尾の一部を次のチャンクに引き継ぐ
-                        buf = new StringBuilder(buf.substring(bufLen - overlap))
+                        buf = new StringBuilder(buf.substring(bufLen - overlapSize))
                             .append(s).toString();
                     } else {
                         buf += s;
@@ -346,6 +360,10 @@ public final class VectorFile {
         if(path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);
         }
+        if(!name.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
+            // 拡張子が存在しない場合は拡張子をセット.
+            name += VECTOR_GROUP_FILE_EXTENSION;
+        }
         // ファイル名からグループ名を取得する.
         String group = getVectorGroupFileToGroupName(name);
         // ファイルタイムを取得.
@@ -376,8 +394,13 @@ public final class VectorFile {
         if(path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);
         }
+        if(!fileName.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
+            // 拡張子が存在しない場合は拡張子をセット.
+            fileName += VECTOR_GROUP_FILE_EXTENSION;
+        }
         // 対象ファイルが存在するか確認.
         if(new File(path + "/" + fileName).isFile()) {
+            // ファイルが存在する場合.
             // 対象条件のVectorGroupを作成.
             VectorGroup vg = loadVectorGroup(path, fileName, null);
             // Vector塊一覧を取得.
@@ -404,6 +427,7 @@ public final class VectorFile {
         List<String> chunkTextList = stringToChunks(
             text, chunkSize, overlap);
         len = chunkTextList.size();
+
         // 分割されたテキスト塊の内容をベクトル化.
         // 作成された内容をVectorChunkのリストに追加する.
         List<double[]> vectorList = new ArrayList(len);
@@ -441,6 +465,10 @@ public final class VectorFile {
         // パスの最後に / がある場合は除外.
         if(path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);
+        }
+        if(!fileName.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
+            // 拡張子が存在しない場合は拡張子をセット.
+            fileName += VECTOR_GROUP_FILE_EXTENSION;
         }
         // 対象ファイルが存在しない場合.
         if(!new File(path + "/" + fileName).isFile()) {

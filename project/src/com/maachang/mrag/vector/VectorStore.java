@@ -8,6 +8,9 @@ import java.util.concurrent.*;
  */
 public class VectorStore {
 
+    // ベクターストアーファイル格納パス.
+    private String path;
+
     // vectorStore管理下のvectorGroupを管理するオブジェクト.
     private Map<String, VectorGroup> stores =
         new ConcurrentHashMap<String, VectorGroup>();
