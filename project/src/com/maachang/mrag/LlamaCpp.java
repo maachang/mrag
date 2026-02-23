@@ -17,7 +17,20 @@ public class LlamaCpp {
     // endpoint: path/.../key を設定します.
     // body: POST送信対象のJSON情報を設定します.
     // 戻り値: JSON結果が返却されます.
-    private static final Object fetch(String baseUrl, String endpoint, Object body) {
+    private static final Object fetch(
+        String baseUrl, String endpoint, Object body) {
+        return fetch(false, baseUrl, endpoint, body);
+    }
+
+    // llama.cppの server にPOSTでアクセス.
+    // noResultJson: true の場合、JSON返却を行いません.
+    // baseUrl: http://domain:port までのURLを設定します.
+    // endpoint: path/.../key を設定します.
+    // body: POST送信対象のJSON情報を設定します.
+    // 戻り値: JSON結果が返却されます.
+    //         また noResultJson=true の場合は文字列が返却されます.
+    private static final Object fetch(
+        boolean noResultJson, String baseUrl, String endpoint, Object body) {
         if(baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
@@ -51,7 +64,11 @@ public class LlamaCpp {
                 } catch(Exception ee) {}
                 throw mre;
             }
-            // 正常終了.
+            // JSONではなく文字列返却.
+            if(noResultJson == true) {
+                return resBody;
+            }
+            // JSON返却.
             return res;
         } catch(MRagException me) {
             throw me;
@@ -85,76 +102,174 @@ public class LlamaCpp {
     // 埋め込みベクトルを取得.
     // baseUrl: http://domain:port までのURLを設定します.
     // text: ベクトル変換対象の文字列を設定します.
-    // 戻り値: ベクトル変換された double[] が返却されます.
-    public static final double[] getEmbedding(String baseUrl, String text) {
+    // 戻り値: ベクトル変換された float[] が返却されます.
+    public static final float[] getEmbedding(String baseUrl, String text) {
+        // body-jsonをセット.
         Map<String, Object> body = new HashMap<String,Object>();
-        body.put("content", text);
-        Object data = fetch(baseUrl, "embedding", body);
-        // llama-server は { embedding: [...] } または [{ embedding: [...] }] を返す.
+        body.put("model", "embeddinggemma");
+        body.put("input", text);
+
+        // v1/embeddings を利用.
+        Object result = fetch(baseUrl, "v1/embeddings", body);
+        // result = data[0].embedding[...];
         Object res;
-        if(data instanceof List) {
-            // data[0].embedding
-            res = Conv.getList(data).get(0);
-            res = Conv.getMap(res).get("embedding");
-        } else {
-            // data.embedding
-            res = Conv.getMap(data).get("embedding");
-        }
-        // List型じゃない場合.
-        if(res == null || !(res instanceof List)) {
-            throw new MRagException("Failed to get embedding: " + res);
-        }
-        // [[1,2,3,4,5.... ]] の場合.
-        List list = Conv.getList(res);        
-        if(list.get(0) instanceof List) {
-            // list[0]
-            list = Conv.getList(list.get(0));
-        }
-        // リスト情報をdouble[]変換.
-        double[] ret;
+        res = Conv.getMap(result).get("data");
+        res = Conv.getList(res).get(0);
+        res = Conv.getMap(res).get("embedding");
+        List list = Conv.getList(res); 
+        res = null;
+
+        // リスト情報を float[]変換.
+        float[] ret;
         Object n;        
         int len = list.size();
-        ret = new double[len];
+        ret = new float[len];
         for(int i = 0; i < len; i ++) {
-            ret[i] = Conv.getDouble(list.get(i));
+            ret[i] = Conv.getFloat(list.get(i));
         }
         return ret;
     }
 
+
     // 推論 (チャット補完)
     // baseUrl: http://domain:port までのURLを設定します.
-    // userPrompt: ユーザ質問内容が設定されます.
-    // systemPrompt: システム側が設定する質問補足内容が設定されます.
-    // 戻り値: 回答が返却されます.
-    public static final String chatCompletion(
-        String baseUrl, String userPrompt, String systemPrompt) {
+    // prompt: 質問内容が設定されます.
+    // 戻り値: /v1/chat/completions のJSON結果が返却されます.
+    public static final Object getChatCompletions(String baseUrl, String prompt) {
+        return getChatCompletions(baseUrl, prompt, -1f, -1);
+    }
+
+    // 推論 (チャット補完)
+    // baseUrl: http://domain:port までのURLを設定します.
+    // prompt: 質問内容が設定されます.
+    // temperature Temperatureパラメータ値(0に近いほど正確性)の値を設定します.
+    //             ・ 0.1 - 0.3: 正確性重視（事実・指示）
+    //             ・ 0.7 - 0.8: バランス重視（対話）
+    //             ・ 1.0 - 1.2: 創造性重視（物語・創作）
+    // maxTokens: 返却トークン値を設定します.
+    // 戻り値: /v1/chat/completions のJSON結果が返却されます.
+    public static final Object getChatCompletions(
+        String baseUrl, String prompt, float temperature, int maxTokens) {
         Map<String, Object> body = new HashMap<String, Object>();
-        body.put("prompt", formatPrompt(systemPrompt, userPrompt));
-        body.put("n_predict", 1024);
-        body.put("temperature", 0.3);
-        body.put("stop", STOP_LIST);
-        Object data = fetch(baseUrl, "completion", body);
-        return ((String)Conv.getMap(data).get("content")).trim();
-    }
-
-    // chatCompletion のPOSTパラメータ=stopにセットする内容.
-    private static final List STOP_LIST;
-    static {
-        List<String> s = new ArrayList<String>();
-        s.add("<|end|>");
-        s.add("<|user|>");
-        s.add("</s>");
-        STOP_LIST = s;
-    }
-
-    // フォーマットプロンプトを作成.
-    private static final String formatPrompt(String systemPrompt, String userPrompt) {
-        StringBuilder ret = new StringBuilder();
-        if(systemPrompt != null || systemPrompt.length() == 0) {
-            ret.append("<|system|>\n").append(systemPrompt).append("<|end|>\n");
+        body.put("messages", Conv.newList(Conv.newMap("role", "user", "content", prompt)));
+        if(temperature > 0) {
+            body.put("temperature", temperature);
+        } else {
+            body.put("temperature", 0.3f);
         }
-        ret.append("<|user|>\n").append(userPrompt).append("<|end|>\n<|assistant|>\n");
-        return ret.toString();
+        if(maxTokens > 0) {
+            body.put("max_tokens", maxTokens);
+        }
+        return fetch(baseUrl, "v1/chat/completions", body);
     }
+
+    // getChatCompletions 返却値からMessage.conentを取得.
+    // json: getChatCompletions で返却された内容を設定します.
+    // 戻り値: Message.contentが返却されます.
+    public static final String getResultChatCompletionsToText(Object json) {
+        // getChatCompletions返却結果のjson解析して、有効なメッセージを返却.
+        // (以下のJSONが返却される)
+        // {created,
+        //   usage:{completion_tokens, prompt_tokens, total_tokens},
+        //   timings: {cache_n, predicted_ms, predicted_per_second, prompt_per_token_ms, prompt_n,
+        //       prompt_ms, prompt_per_second, predicted_n, predicted_per_token_ms},
+        //   model, id,
+        //   choices: [{finish_reason, index=0, message: {role, content: test}}]}
+
+        // 上ｎ内容から
+        // {choices: [0].message.content}
+        // これを取得する.
+        Map top = Conv.getMap(json);
+        List list = Conv.getList(top.get("choices"));
+        Map choicesTop = Conv.getMap(list.get(0));
+        Map message = Conv.getMap(choicesTop.get("message"));
+        return Conv.getString(message.get("content"));
+    }
+
+    // 推論 (チャット補完)メッセージだけを取得.
+    // baseUrl: http://domain:port までのURLを設定します.
+    // prompt: 質問内容が設定されます.
+    // 戻り値: String メッセージが返却されます.
+    public static final String getChatMessage(String baseUrl, String prompt) {
+        return getChatMessage(baseUrl, prompt, -1f, -1);
+    }
+
+    // 推論 (チャット補完)メッセージだけを取得.
+    // baseUrl: http://domain:port までのURLを設定します.
+    // prompt: 質問内容が設定されます.
+    // temperature Temperatureパラメータ値(0に近いほど正確性)の値を設定します.
+    //             ・ 0.1 - 0.3: 正確性重視（事実・指示）
+    //             ・ 0.7 - 0.8: バランス重視（対話）
+    //             ・ 1.0 - 1.2: 創造性重視（物語・創作）
+    // maxTokens: 返却トークン値を設定します.
+    // 戻り値: String メッセージが返却されます.
+    public static final String getChatMessage(
+        String baseUrl, String prompt, float temperature, int maxTokens) {
+        Object res = getChatCompletions(baseUrl, prompt, temperature, maxTokens);
+        return getResultChatCompletionsToText(res);
+    } 
+
+    // これは後で実装＋テストする.
+    /*
+    // [リアルタイム取得版]推論 (チャット補完)
+    // baseUrl: http://domain:port までのURLを設定します.
+    // prompt: 質問内容が設定されます.
+    // temperature Temperatureパラメータ値(0に近いほど正確性)の値を設定します.
+    //             ・ 0.1 - 0.3: 正確性重視（事実・指示）
+    //             ・ 0.7 - 0.8: バランス重視（対話）
+    //             ・ 1.0 - 1.2: 創造性重視（物語・創作）
+    // maxTokens: 返却トークン値を設定します.
+    // 戻り値: /v1/chat/completions のJSON結果が返却されます.
+    public void getChatCompletionsToStream(
+        Reader out, String baseUrl, String prompt, float temperature, int maxTokens) {
+        Map<String, Object> body = new HashMap<String, Object>();
+        body.put("messages", Conv.newList(Conv.newMap("role", "user", "content", prompt)));
+        body.put("temperature", 0.3);
+        body.put("stream", true);
+        if(temperature > 0) {
+            body.put("temperature", temperature);
+        } else {
+            body.put("temperature", 0.3f);
+        }
+        if(maxTokens > 0) {
+            body.put("max_tokens", maxTokens);
+        }
+        // リクエストをセット.
+        HttpRequest req = HttpRequest.newBuilder()
+            .uri(URI.create(Config.LLM_URL + "/v1/chat/completions"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(Json.encode(body)))
+            .build();
+
+        // InputStream でストリーミング受信
+        HttpResponse<InputStream> res = HTTPCLIENT.send(
+            req, HttpResponse.BodyHandlers.ofInputStream());
+        if (res.statusCode() != 200) {
+            throw new MRagException(res.statusCode(), "llama.cppエラー");
+        }
+
+        // レスポンスオブジェクトを返却.
+        BufferedReader reader = new BufferedReader(
+            new InputStreamReader(res.body(), "UTF8"))
+
+        // ここから下は何か修正が必要.
+        try (var reader = new BufferedReader(
+                new InputStreamReader(res.body(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("data: ")) continue;
+                var json = line.substring(6).trim();
+                if (json.equals("[DONE]")) break;
+                try {
+                    var tok = om.readTree(json)
+                            .at("/choices/0/delta/content")
+                            .asText("");
+                    System.out.print(tok);
+                    System.out.flush();
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+    */
 }
 

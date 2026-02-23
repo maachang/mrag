@@ -7,7 +7,7 @@ public class VectorChunk implements Comparable<VectorChunk> {
     // １つのファイルのベクトル塊のテキスト文.
     public String text;
     // １つのファイルのベクトルデータ.
-    public double[] embedding;
+    public float[] embedding;
     // ファイル名.
     public String fileName;
     // １つのファイルのベクトル塊項番.
@@ -28,7 +28,7 @@ public class VectorChunk implements Comparable<VectorChunk> {
     //         nameのファイル内容の１つのテキストを分割した総数がここに入ります.
     // name: ファイル名.
     // emb: １つのファイルのベクトルデータ.
-    public VectorChunk(String text, int no, int allLen, String name, double[] emb) {
+    public VectorChunk(String text, int no, int allLen, String name, float[] emb) {
         this.text = text; 
         this.embedding = emb;
         this.fileName = name;
@@ -56,6 +56,7 @@ public class VectorChunk implements Comparable<VectorChunk> {
     // [降順]ソート条件を返却.
     // Comparable インターフェイス実装用.
     public int compareTo(VectorChunk o) {
+        // 降順
         if(o.score < score) {
             return -1;
         } else if(o.score > score) {

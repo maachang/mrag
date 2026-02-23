@@ -35,14 +35,14 @@ public class EncodeBinary {
     }
     public static final byte[] getLong(long src) {
         return new byte[] {
-            (byte)(src & 0x0ffL),
+            (byte)(src &  0x0ffL),
             (byte)((src & 0x0ff00L) >> 8L),
             (byte)((src & 0x0ff0000L) >> 16L),
             (byte)((src & 0x0ff000000L) >> 24L),
             (byte)((src & 0x0ff00000000L) >> 32L),
             (byte)((src & 0x0ff0000000000L) >> 40L),
             (byte)((src & 0x0ff000000000000L) >> 48L),
-            (byte)(((src & 0xff000000000000L) >> 56L) & 0x0ffL)
+            (byte)(((src & 0xff00000000000000L) >> 56L) & 0x0ffL)
         };
     }
     public static final byte[] getDouble(double src) {
