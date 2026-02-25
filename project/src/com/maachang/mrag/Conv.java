@@ -137,6 +137,8 @@ public final class Conv {
         // 1. コードブロック (```...```) の除去、または中身だけ残す
         //result = result.replaceAll("(?s)```.*?```", ""); // 中身も除去.
         //result = result.replaceAll("(?s)```(?:[a-z]*\\n)?(.*?)\\n?```", "$1"); // 中身を残す.
+        result = result.replaceAll("```(.+?)```", "~~~$1~~~"); // ``` ... ``` を ~~~ ... ~~~ に変換.
+
         // 2. インラインコード (`code`)
         result = result.replaceAll("`(.+?)`", "$1");
         // 3. 太字・斜体 (***bold***, **bold**, *italic*, __bold__, _italic_)

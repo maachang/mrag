@@ -119,7 +119,7 @@ public final class VectorFile {
         int allLen = bd.getUInt3();
         VectorChunk[] ret = new VectorChunk[allLen];
         // binary化されてるVectorChunk群をdeSerialize.
-        int i, j, indexNo, len;
+        int i, j, indexNo, len, lenJ;
         String fileName, text;
         float[] embList;
         for(i = 0; i < allLen; i ++) {
@@ -132,9 +132,9 @@ public final class VectorFile {
             len = bd.getUInt3();
             text = bd.getString(len);
             // embeddingの長さを取得.
-            len = bd.getUInt3();
-            embList = new float[len];
-            for(j = 0; j < len; j ++) {
+            lenJ = bd.getUInt3();
+            embList = new float[lenJ];
+            for(j = 0; j < lenJ; j ++) {
                 // 1つのembeddingを取得.
                 embList[j] = bd.getFloat();
             }
@@ -181,7 +181,7 @@ public final class VectorFile {
     // 保存先のOutputStreamを設定します.
     // chunks: 保存対象の VectorChunk 群を設定します.
     public static final void saveGroup(OutputStream out, VectorChunk[] chunks) {
-        int i, j, len;
+        int i, j, lenJ;
         byte[] bin;
         float[] embList;
         VectorChunk ck;
@@ -206,12 +206,12 @@ public final class VectorFile {
                 out.write(bin);
                 // embeddingを保存.
                 embList = ck.embedding;
-                len = embList.length;
+                lenJ = embList.length;
                 // embeddingの長さを保存.
-                out.write(EncodeBinary.getInt3(len));
-                for(j = 0; j < len; j ++) {
+                out.write(EncodeBinary.getInt3(lenJ));
+                for(j = 0; j < lenJ; j ++) {
                     // 1つのembeddingを保存.
-                    out.write(EncodeBinary.getFloat(embList[i]));
+                    out.write(EncodeBinary.getFloat(embList[j]));
                 }
             }
             out.flush();
@@ -381,9 +381,15 @@ public final class VectorFile {
             // 今回追加する内容でバッファサイズを超える場合.
             else if(bufLen + s.length() > chunkSize && bufLen > 0) {
                 result.add(buf.trim());
-                // オーバーラップ: 末尾の一部を次のチャンクに引き継ぐ
-                buf = new StringBuilder(buf.substring(bufLen - overlapSize))
-                    .append(s).toString();
+                if(bufLen > overlapSize) {
+                    // オーバーラップ: 末尾の一部を次のチャンクに引き継ぐ
+                    buf = new StringBuilder(buf.substring(bufLen - overlapSize))
+                        .append(s).toString();
+                } else {
+                    // オーバーラップサイズよりバッファサイズが少ない場合、
+                    // 前のバッファを次のチャンクに引き継ぐ
+                    buf = new StringBuilder(buf).append(s).toString();
+                }
             }
             // バッファを超えない場合.
             else {
@@ -529,15 +535,22 @@ public final class VectorFile {
             chBaseUrl, SUMMARY_LLM_HEAD_MSG + text);
         
         // サマリー文書を加工.
-        sumTxt = Conv.stripMarkdown(sumTxt); // マークダウンを除去.
+        sumTxt = Conv.stripMarkdown(sumTxt); // 不要なマークダウンを除去.
         sumTxt = Conv.exclusionText(sumTxt); // 不要な文字を除去.
         sumTxt = Conv.trimEnterText(sumTxt); // 不要な改行を除去.
 
         // 作成したサマリー情報を追加.
         summary.put(textFileName, sumTxt);
 
-        // 分解するテキストもサマリーに変更.
-        text = sumTxt;
+        // [本文をサマリー化しない場合]テキスト本文も加工する.
+        text = Conv.stripMarkdown(text); // 不要なマークダウンを除去.
+        text = Conv.exclusionText(text); // 不要な文字を除去.
+        text = Conv.trimEnterText(text); // 不要な改行を除去.
+
+        // テキストにサマリーを追加する.
+        text = new StringBuilder(sumTxt).append("\n\n")
+            .append(text).toString();
+        sumTxt = null;
 
         // テキストを塊単位で分割する.
         List<String> chunkTextList = stringToChunks(
