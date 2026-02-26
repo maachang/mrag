@@ -8,6 +8,8 @@ import java.util.concurrent.*;
 
 import com.maachang.mrag.*;
 
+import com.maachang.mrag.vector.VectorSummary.VSummaryValue;
+
 /**
  * VectorStoreに対する１つのファイルに関する処理.
  */
@@ -69,6 +71,11 @@ public final class VectorFile {
         return path + "/" + groupName + extension;
     }
 
+    // ファイルが存在するか確認.
+    private static final boolean isFile(String path, String fileName) {
+        return new File(path + "/" + fileName).isFile();
+    }
+
     // VectorChunk群をファイルロード処理.
     // path: 対象ディレクトリパスを設定します.
     // groupName: グループ名を設定します.
@@ -120,14 +127,14 @@ public final class VectorFile {
         VectorChunk[] ret = new VectorChunk[allLen];
         // binary化されてるVectorChunk群をdeSerialize.
         int i, j, indexNo, len, lenJ;
-        String fileName, text;
+        String docName, text;
         float[] embList;
         for(i = 0; i < allLen; i ++) {
             // インデックスNoを取得.
             indexNo = bd.getUInt3();
-            // ファイル名を取得.
+            // 文書名を取得.
             len = bd.getUInt2();
-            fileName = bd.getString(len);
+            docName = bd.getString(len);
             // テキストを取得.
             len = bd.getUInt3();
             text = bd.getString(len);
@@ -139,7 +146,7 @@ public final class VectorFile {
                 embList[j] = bd.getFloat();
             }
             ret[i] = new VectorChunk(
-                text, indexNo, allLen, fileName, embList);
+                text, indexNo, allLen, docName, embList);
         }
         return ret;
     }
@@ -196,8 +203,8 @@ public final class VectorFile {
                 ck = chunks[i];
                 // インデックスNoを保存.
                 out.write(EncodeBinary.getInt3(ck.indexNo));
-                // ファイル名を保存.
-                bin = EncodeBinary.getString(ck.fileName);
+                // 文書名を保存.
+                bin = EncodeBinary.getString(ck.docName);
                 out.write(EncodeBinary.getInt2(bin.length));
                 out.write(bin);
                 // テキストを保存.
@@ -262,7 +269,9 @@ public final class VectorFile {
     // 戻り値: VectorSummary が返却されます.
     public static final VectorSummary loadSummary(byte[] binary) {
         int i, len;
-        String fileName, text;
+        long time;
+        String docName, text, url;
+        VSummaryValue vv;
         DecodeBinary bd = new DecodeBinary(binary);
         // ファイルシンボルの確認.
         String simbol = bd.getString(SIMBOLE_SIZE);
@@ -274,13 +283,18 @@ public final class VectorFile {
         // 最初にVectorSummary数を取得.
         int allLen = bd.getUInt3();
         for(i = 0; i < allLen; i ++) {
-            // ファイル名を取得.
+            // 文書名を取得.
             len = bd.getUInt2();
-            fileName = bd.getString(len);
+            docName = bd.getString(len);
             // テキストを取得.
             len = bd.getUInt3();
             text = bd.getString(len);
-            ret.put(fileName, text);
+            // URLを取得.
+            len = bd.getUInt3();
+            url = bd.getString(len);
+            // 登録時間を取得.
+            time = bd.getLong();
+            ret.put(docName, new VSummaryValue(text, url, time));
         }
         return ret;
     }
@@ -324,8 +338,9 @@ public final class VectorFile {
     public static final void saveSummary(OutputStream out, VectorSummary summary) {
         int i, len;
         byte[] bin;
-        String fileName, text;
-        String[] names = summary.getNames();
+        String docName;
+        VSummaryValue vv;
+        String[] names = summary.getDocuments();
         int allLen = names.length;
         try {
             // ファイルシンボルを出力.
@@ -334,15 +349,23 @@ public final class VectorFile {
             out.write(EncodeBinary.getInt3(allLen));
             // 保存対象のVectorChunk群をループ実行.
             for(i = 0; i < allLen; i ++) {
-                fileName = names[i];
-                text = summary.get(fileName);
-                // ファイル名を保存.
-                bin = EncodeBinary.getString(fileName);
+                docName = names[i];
+                // 対象文書名の要素を取得.
+                vv = summary.get(docName);
+                // 文書名を保存.
+                bin = EncodeBinary.getString(docName);
                 out.write(EncodeBinary.getInt2(bin.length));
                 out.write(bin);
                 // テキストを保存.
-                bin = EncodeBinary.getString(text);
+                bin = EncodeBinary.getString(vv.text);
                 out.write(EncodeBinary.getInt3(bin.length));
+                out.write(bin);
+                // URLを保存.
+                bin = EncodeBinary.getString(vv.url);
+                out.write(EncodeBinary.getInt3(bin.length));
+                out.write(bin);
+                // 登録時間を保存.
+                bin = EncodeBinary.getLong(vv.time);
                 out.write(bin);
             }
             out.flush();
@@ -463,29 +486,28 @@ public final class VectorFile {
             groupName, path, vgFileName, time, chunks, summary, cman);
     }
 
-    // ファイルが存在するか確認.
-    private static final boolean isFile(String path, String fileName) {
-        return new File(path + "/" + fileName).isFile();
-    }
-
     // 指定パスのファイル名のVectorGroupに対して、ファイルテキストを追加.
     // path: 対象ディレクトリパスを設定します.
     // groupName: グループ名を設定します.
     // textFileName: 新たにVectorGroupに追加するファイル名を設定します.
+    // textUrl: 新たにVectorGroupに追加するURL名を設定します.
     // text: 新たにVectorGroupに追加するテキストを設定します.
     // chunkSize: チャンク単位の文字列長を設定します.
     // overlap: 次のチャンクに設定する文字列長を設定します.
     // embBaseUrl: getEmbedding 対象の http://domain:port までのURLを設定します.
     // chBaseUrl: getChatCompletions 対象の http://domain:port までのURLを設定します.
     public static final void addTextFileToVectorGroup(
-        String path, String groupName, String textFileName, String text,
-        int chunkSize, int overlap, String embBaseUrl, String chBaseUrl) {
+        String path, String groupName, String textFileName, String textUrl,
+        String text, int chunkSize, int overlap, String embBaseUrl, String chBaseUrl) {
         int i, len, listLen;
         float[] emb;
         String chkTxt;
         VectorChunk[] docs;
         VectorSummary summary;
         List<VectorChunk> list;
+
+        // 追加するテキストファイル名から拡張子を削除して文書名にする.
+        String textDocName = Conv.getCutExtension(textFileName);
 
         //パスとグループを整頓.
         String[] pg = (String[])trimPathGroupToFilePath(path, groupName);
@@ -506,14 +528,14 @@ public final class VectorFile {
             VectorGroup vg = loadVectorGroup(
                 path, groupName, null);
             // Vector塊一覧を取得.
-            docs = vg.getDocuments();
+            docs = vg.getChunked();
             len = docs.length;
             // Vector塊をリスト化.
             list = new ArrayList<VectorChunk>(len);
             for(i = 0; i < len; i ++) {
-                // 今回追加対象のtextFileNameが存在する場合は
+                // 今回追加対象のtextDocNameが存在する場合は
                 // 追加しない.
-                if(docs[i].fileName.equals(textFileName)) {
+                if(docs[i].docName.equals(textDocName)) {
                     continue;
                 }
                 list.add(docs[i]);
@@ -540,7 +562,7 @@ public final class VectorFile {
         sumTxt = Conv.trimEnterText(sumTxt); // 不要な改行を除去.
 
         // 作成したサマリー情報を追加.
-        summary.put(textFileName, sumTxt);
+        summary.put(textDocName, new VSummaryValue(sumTxt, textUrl));
 
         // [本文をサマリー化しない場合]テキスト本文も加工する.
         text = Conv.stripMarkdown(text); // 不要なマークダウンを除去.
@@ -567,7 +589,7 @@ public final class VectorFile {
             // 新しいVectorChunkを追加.
             list.add(
                 new VectorChunk(
-                    chkTxt, i, len, textFileName, emb)
+                    chkTxt, i, len, textDocName, emb)
             );
         }
         // 追加されたlistをVectorChunk配列に変換.
@@ -585,7 +607,7 @@ public final class VectorFile {
     // 指定パスのファイル名のVectorGroupに対して、ファイルテキストを削除.
     // path: 対象ディレクトリパスを設定します.
     // groupName: グループ名を設定します.
-    // textFileName: 新たにVectorGroupに追加するファイル名を設定します.
+    // textFileName: VectorGroupから削除するファイル名を設定します.
     // 戻り値: false の場合削除対象が存在しないことを示します.
     public static final boolean removeTextFileToVectorGroup(
         String path, String groupName, String textFileName) {
@@ -593,6 +615,9 @@ public final class VectorFile {
         int i, len;
         VectorChunk[] docs;
         List<VectorChunk> list;
+
+        // 追加するテキストファイル名から拡張子を削除して文書名にする.
+        String textDocName = Conv.getCutExtension(textFileName);
 
         //パスとグループを整頓.
         String[] pg = (String[])trimPathGroupToFilePath(path, groupName);
@@ -625,14 +650,14 @@ public final class VectorFile {
         // VectorSummaryを取得.
         VectorSummary vs = vg.getSummary();
         // Vector塊一覧を取得.
-        docs = vg.getDocuments();
+        docs = vg.getChunked();
         len = docs.length;
         // Vector塊をリスト化.
         list = new ArrayList<VectorChunk>(len);
         boolean removeFlag = false;
         for(i = 0; i < len; i ++) {
             // 削除対象の条件の場合.
-            if(docs[i].fileName.equals(textFileName)) {
+            if(docs[i].docName.equals(textDocName)) {
                 removeFlag = true;
                 continue;
             }
@@ -666,7 +691,7 @@ public final class VectorFile {
         // 更新されたdocsを保存する.
         saveGroup(path, groupName, docs);
         // VectorSummaryから削除ファイル名を指定して削除.
-        vs.getList().remove(textFileName);
+        vs.getList().remove(textDocName);
         // VectorSummaryを保存.
         saveSummary(path, groupName, vs);
         return true;

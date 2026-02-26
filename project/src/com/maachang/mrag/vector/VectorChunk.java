@@ -8,8 +8,8 @@ public class VectorChunk implements Comparable<VectorChunk> {
     public String text;
     // １つのファイルのベクトルデータ.
     public float[] embedding;
-    // ファイル名.
-    public String fileName;
+    // ドキュメント名.
+    public String docName;
     // １つのファイルのベクトル塊項番.
     public int indexNo;
     // １つのファイルのベクトル塊総数.
@@ -26,12 +26,12 @@ public class VectorChunk implements Comparable<VectorChunk> {
     // no: １つのファイルのベクトル塊項番.
     // allLen: １つのファイルのベクトル塊総数.
     //         nameのファイル内容の１つのテキストを分割した総数がここに入ります.
-    // name: ファイル名.
+    // name: 文書名.
     // emb: １つのファイルのベクトルデータ.
     public VectorChunk(String text, int no, int allLen, String name, float[] emb) {
         this.text = text; 
         this.embedding = emb;
-        this.fileName = name;
+        this.docName = name;
         this.indexNo = no;
         this.allLength = allLen;
         this.score = -1;
@@ -46,7 +46,7 @@ public class VectorChunk implements Comparable<VectorChunk> {
         }
         out.text = this.text;
         out.embedding = this.embedding;
-        out.fileName = this.fileName;
+        out.docName = this.docName;
         out.indexNo = this.indexNo;
         out.allLength = this.allLength;
         out.score = this.score;

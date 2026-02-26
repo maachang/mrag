@@ -126,6 +126,17 @@ public final class Conv {
         return list;
     }
 
+    // ファイルから拡張子を除外して取得.
+    // fileName: 対象のファイル名を設定します.
+    // 戻り値: 拡張子を覗いた文書名が返却されます.
+    public static final String getCutExtension(String fileName) {
+        int p = fileName.lastIndexOf(".");
+        if(p != -1) {
+            return fileName.substring(0, p);
+        }
+        return fileName;
+    }
+
     // マークダウン表記内容を削除する.
     // text: 対象のテキストを設定します.
     // 戻り値: 全角スペースが省かれた内容が返却されます.
@@ -160,7 +171,6 @@ public final class Conv {
         //result = result.replaceAll("(?m)^[\\s\\t]*([\\*\\+-]|\\d+\\.)\\s+", "");
         return result.trim();
     }
-
 
     // 不要な本文文字列の除去.
     // text: 対象のテキストを設定します.

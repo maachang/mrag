@@ -42,16 +42,27 @@ public class VectorGroup {
     // コンストラクタ.
     // group: ベクトルストアグループ名を設定します.
     // path: ファイルパス名を設定します.
-    // name: ファイル名を設定します.
+    // fileName: ファイル名を設定します.
+    // docs: ベクトルストア情報を設定します.
+    // smms: ベクトルサマリー情報を設定します.
+    public VectorGroup(String group, String path, String fileName,
+        long time, VectorChunk[] docs, VectorSummary smms) {
+        this(group, path, fileName, time, docs, smms, null);
+    } 
+
+    // コンストラクタ.
+    // group: ベクトルストアグループ名を設定します.
+    // path: ファイルパス名を設定します.
+    // fileName: ファイル名を設定します.
     // docs: ベクトルストア情報を設定します.
     // smms: ベクトルサマリー情報を設定します.
     // cman: VectorChunkキャッシュ管理Queueを設定します.
-    public VectorGroup(String group, String path, String name,
+    public VectorGroup(String group, String path, String fileName,
         long time, VectorChunk[] docs, VectorSummary smms,
         Queue<VectorChunk> cman) {
         this.group = group;
         this.filePath = path;
-        this.fileName = name;
+        this.fileName = fileName;
         this.fileTime = time;
         this.documents = docs;
         this.summarys = smms;
@@ -128,11 +139,11 @@ public class VectorGroup {
 
     // グループ内のVectorChunk群を取得.
     // 戻り値: VectorChunk群が返却されます.
-    public VectorChunk[] getDocuments() {
+    public VectorChunk[] getChunked() {
         return documents;
     }
 
-    // グループ無いのVectorSummaryを取得.
+    // グループ内のVectorSummaryを取得.
     // 戻り値: VectorSummaryが返却されます.
     public VectorSummary getSummary() {
         return summarys;
@@ -172,20 +183,8 @@ public class VectorGroup {
 
     // グループに登録されているファイル名群を取得.
     // 戻り値: 現状のVectorGroupに格納されているファイル群が返却されます.
-    public String[] getFileNames() {
-        int i;
-        Set<String> out = new HashSet<String>();
-        int len = documents.length;
-        for(i = 0; i < len; i ++) {
-            out.add(documents[i].fileName);
-        }
-        len = out.size();
-        String[] ret = new String[len];
-        Iterator<String> it = out.iterator();
-        i = 0;
-        while(it.hasNext()) {
-            ret[i ++] = it.next();
-        }
-        return ret;
+    public String[] getDocuments() {
+        // サマリー管理から返却.
+        return summarys.getDocuments();
     }
 }
