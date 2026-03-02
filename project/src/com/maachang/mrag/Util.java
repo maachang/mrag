@@ -1,5 +1,6 @@
 package com.maachang.mrag;
 
+import java.io.*;
 import java.util.*;
 
 /**
@@ -74,5 +75,52 @@ public final class Util {
             ret = sortList;
         }
         return ret;
+    }
+
+    // ファイルを読み込む.
+    // path: 対象のファイルパスを設定します.
+    // name: 対象のファイル名を設定します.
+    // 戻り値: 文字列でファイル内容が返却されます.
+    public static final String readFileToString(String path, String name) {
+        path = path.trim();
+        name = name.trim();
+        if(path.endsWith("/")) {
+            path = path.substring(0, path.length() -1);
+        }
+        if(name.startsWith("/")) {
+            name = name.substring(1);
+        }
+        return readFileToString(path + "/" + name);
+    }
+
+    // ファイルを読み込む.
+    // fileName: 対象のファイル名を設定します.
+    // 戻り値: 文字列でファイル内容が返却されます.
+    public static final String readFileToString(String fileName) {
+        String s;
+        StringBuilder buf = new StringBuilder(32768);
+        FileInputStream in = null;
+        BufferedReader br = null;
+        try {
+            in = new FileInputStream(fileName);
+            br = new BufferedReader(new InputStreamReader(in));
+
+            while((s = br.readLine()) != null) {
+                buf.append(s);
+            }
+            in.close();
+            in = null;
+            br.close();
+            br = null;
+        } catch(Exception e) {
+            throw new MRagException(e);
+        } finally {
+            if(in != null) {
+                try {
+                    in.close();
+                } catch(Exception e) {}
+            }
+        }
+        return buf.toString();
     }
 }

@@ -35,9 +35,6 @@ public final class VectorFile {
     // 拡張子の文字数.
     private static final int FILE_EXTENSION_SIZE = 4;
 
-    // llama.cppの推論でファイル内容をサマリー化文言.
-    private static final String SUMMARY_LLM_HEAD_MSG = "以下の内容のサマリーをまとめてほしい。\n\n ---\n ";
-
     // path と groupNameを整頓.
     private static final String[] trimPathGroupToFilePath(
         String path, String groupName) {
@@ -438,6 +435,51 @@ public final class VectorFile {
         return result;
     }
 
+    // stringToChunksで分けた内容を組み込みベクトル計算して、
+    // その内容を対象VectorGroupで検索した結果を返却する.
+    // vg: VectorGroupを設定します.
+    // chunkSize: チャンク単位の文字列長を設定します.
+    // overlapSize: 次のチャンクに設定する文字列長を設定します.
+    // length: 最大検索件数を設定します.
+    // message: 対象の問い合わせメッセージを設定します.
+    // 戻り値: VectorChunk[] のベクトル計算の配列が返却されます.
+    public static final VectorChunk[] searchEmbedding(
+        VectorGroup vg, int chunkSize, int overlapSize,
+        int length, String message) {
+
+        // 質問内容をstringToChunksで分ける.
+        List<String> chunks = stringToChunks(
+            message, chunkSize, overlapSize);
+        
+        // 質問分割単位で処理を実施.
+        List<VectorChunk> list = new ArrayList<VectorChunk>();
+        int i, j, resLen, len, lenJ;
+        float[] semb;
+        VectorChunk[] ary = new VectorChunk[length];
+        len = chunks.size();
+        Config config = Config.getInstance();
+        for(i = 0; i < len; i ++) {
+            // ベクトル座標取得.
+            semb = LlamaCpp.getEmbedding(config.getEmbeddingURL(), chunks.get(i));
+            // VectorGroupからベクトル座標に近い情報を検索して得点の高い順に並び替え.
+            lenJ = vg.searchEmbedding(ary, semb);
+            // length分をリストに追加.
+            lenJ = lenJ > length ? length : lenJ;
+            for(j = 0; j < lenJ; j ++) {
+                list.add(ary[j]);
+            }
+        }
+        // リスト結果を照準ソート.
+        list.sort(null);
+        // 照準の内容を降順で並べ替えで取得.
+        len = list.size();
+        ary = new VectorChunk[len];
+        for(i = len - 1, j = 0; i >= 0; i --) {
+            ary[j ++] = list.get(i);
+        }
+        return ary;
+    }
+
     // 対象ファイルのファイルタイムを取得.
     public static final long getFileTime(String name) {
         try {
@@ -486,7 +528,7 @@ public final class VectorFile {
             groupName, path, vgFileName, time, chunks, summary, cman);
     }
 
-    // 指定パスのファイル名のVectorGroupに対して、ファイルテキストを追加.
+    // 指定パスのファイル名のVectorGroupに対して、ファイルテキストを追加・セット.
     // path: 対象ディレクトリパスを設定します.
     // groupName: グループ名を設定します.
     // textFileName: 新たにVectorGroupに追加するファイル名を設定します.
@@ -496,7 +538,7 @@ public final class VectorFile {
     // overlap: 次のチャンクに設定する文字列長を設定します.
     // embBaseUrl: getEmbedding 対象の http://domain:port までのURLを設定します.
     // chBaseUrl: getChatCompletions 対象の http://domain:port までのURLを設定します.
-    public static final void addTextFileToVectorGroup(
+    public static final void putTextFileToVectorGroup(
         String path, String groupName, String textFileName, String textUrl,
         String text, int chunkSize, int overlap, String embBaseUrl, String chBaseUrl) {
         int i, len, listLen;
@@ -554,7 +596,7 @@ public final class VectorFile {
 
         // サマリー文書を取得.
         String sumTxt = LlamaCpp.getChatMessage(
-            chBaseUrl, SUMMARY_LLM_HEAD_MSG + text);
+            chBaseUrl, Config.getInstance().getSummaryRequest(text));
         
         // サマリー文書を加工.
         sumTxt = Conv.stripMarkdown(sumTxt); // 不要なマークダウンを除去.
@@ -751,14 +793,20 @@ public final class VectorFile {
         }
     }
 
-    // 指定パス以下のVectorGroupファイル情報群を取得.
+    // 指定パス以下のVectorGroupファイル情報群を取得して、
+    // 更新されたグループ名を取得.
+    // gfileList: 管理されているグループファイルリストを設定します.
+    //            また今回取得された更新状況が管理されます.
     // path: 対象ディレクトリパスを設定します.
-    // 戻り値: VGFileInfoオブジェクトを管理するListオブジェクトが返却されます.
-    public static final List<VGFileInfo> getVectorGroupFileNames(String path) {
-        int len;
+    // 戻り値: List<String> 更新・削除が確認されたグループ名群が返却されます.
+    public static final List<String> updateVectorGroupFileNames(
+        Map<String, VGFileInfo> gfileList, String path) {
+        int i, len;
         long time;
         String group, name;
-        List<VGFileInfo> ret = new ArrayList<VGFileInfo>();
+        VGFileInfo src;
+        Set<String> nowGroups = new HashSet<String>();
+        List<String> ret = new ArrayList<String>();
         // パスの最後に / がある場合は除外.
         if(path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);
@@ -766,17 +814,49 @@ public final class VectorFile {
         // 指定パス以下のファイル一覧を取得.
         List<String> files = getPathToFiles(path);
         len = files.size();
-        for(int i = 0; i < len; i ++) {
+        for(i = 0; i < len; i ++) {
             name = files.get(i);
             // VectorGroupファイルじゃない.
             if(!name.endsWith(VECTOR_GROUP_FILE_EXTENSION)) {
                 continue;
             }
             // グループ名を取得.
-            group = name.substring(0, name.length() - FILE_EXTENSION_SIZE);
+            group = name.substring(
+                0, name.length() - FILE_EXTENSION_SIZE);
+            // 今回取得のグループ名をセット.
+            nowGroups.add(group);
             // VectorGroupファイルを生成し、追加する.
             time = getFileTime(path + "/" + name);
-            ret.add(new VGFileInfo(group, path, name, time));
+            
+            // 対象グループ名が存在するか確認.
+            src = gfileList.get(group);
+            // グループファイルが存在しない
+            // ファイルタイムが一致しない.
+            // 更新対象の場合.
+            if(src == null || src.fileTime != time) {
+                // グループファイルリストを更新.
+                gfileList.put(group, new VGFileInfo(
+                    group, path, name, time));
+                // 状態変更グループ名として追加.
+                ret.add(group);
+            }
+        }
+        // 終わったら「削除済みグループ」を取得.
+        Iterator<String> itr = gfileList.keySet().iterator();
+        List<String> removeGroup = new ArrayList<String>();
+        while(itr.hasNext()) {
+            group = itr.next();
+            // 今回取得されたグループに該当しない.
+            if(!nowGroups.contains(group)) {
+                // 状態変更グループ名として追加.
+                ret.add(group);     
+                removeGroup.add(group);           
+            }
+        }
+        // グループファイルリストから削除されたグループを削除.
+        len = removeGroup.size();
+        for(i = 0; i < len; i ++) {
+            gfileList.remove(removeGroup.get(i));
         }
         return ret;
     }

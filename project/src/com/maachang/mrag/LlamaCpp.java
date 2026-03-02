@@ -12,6 +12,12 @@ public class LlamaCpp {
     // HttpClient.
     private static final HttpClient HTTPCLIENT = HttpClient.newHttpClient();
 
+    // Temperatureパラメータ値(0に近いほど正確性)の値.
+    //  ・ 0.1 - 0.3: 正確性重視（事実・指示）
+    //  ・ 0.7 - 0.8: バランス重視（対話）
+    //  ・ 1.0 - 1.2: 創造性重視（物語・創作）
+    private static final float DEF_TEMPERATURE = 0.3f;
+
     // llama.cppの server にPOSTでアクセス.
     // baseUrl: http://domain:port までのURLを設定します.
     // endpoint: path/.../key を設定します.
@@ -155,7 +161,7 @@ public class LlamaCpp {
         if(temperature > 0) {
             body.put("temperature", temperature);
         } else {
-            body.put("temperature", 0.3f);
+            body.put("temperature", DEF_TEMPERATURE);
         }
         if(maxTokens > 0) {
             body.put("max_tokens", maxTokens);
@@ -169,14 +175,17 @@ public class LlamaCpp {
     public static final String getResultChatCompletionsToText(Object json) {
         // getChatCompletions返却結果のjson解析して、有効なメッセージを返却.
         // (以下のJSONが返却される)
+        //
+        // ```
         // {created,
         //   usage:{completion_tokens, prompt_tokens, total_tokens},
         //   timings: {cache_n, predicted_ms, predicted_per_second, prompt_per_token_ms, prompt_n,
         //       prompt_ms, prompt_per_second, predicted_n, predicted_per_token_ms},
         //   model, id,
         //   choices: [{finish_reason, index=0, message: {role, content: test}}]}
-
-        // 上ｎ内容から
+        // ```
+        //
+        // 上の内容から
         // {choices: [0].message.content}
         // これを取得する.
         Map top = Conv.getMap(json);

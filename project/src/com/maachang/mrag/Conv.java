@@ -217,4 +217,22 @@ public final class Conv {
         }
         return buf.toString();
     }
+
+    // KeyをValueに変更するためのテンプレート処理.
+    // src: 対象テンプレート名を設定します.
+    //      テンプレートの置き換えキー名=keyには {{key}} で、変数名を囲う必要があります.
+    //      また{{ key}} のように前後にスペースなどは入れないでください（変換されないため）.
+    // keyValues: 配列偶数=key, 配列奇数=value を必要な数だけ設定します.
+    // 戻り値: 置き換えられた文字列が返却されます.
+    public static final String keyValueTemplate(String src, Object... keyValues) {
+        String k, v;
+        String ret = src;
+        int len = keyValues.length;
+        for(int i = 0; i < len; i += 2) {
+            k = keyValues[i].toString().trim();
+            v = keyValues[i + 1].toString();
+            ret = ret.replace("{{" + k + "}}", v);
+        }
+        return ret;
+    }
 }

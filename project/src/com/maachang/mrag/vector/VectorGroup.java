@@ -98,7 +98,7 @@ public class VectorGroup {
     // out: 取得対象の検索結果格納配列を設定します.
     // queryEmbedding: 組み込みモデルで生成された検索ベクトル配列を設定します.
     // 戻り値: out に格納された長さが返却されます.
-    public int search(VectorChunk[] out, float[] queryEmbedding) {
+    public int searchEmbedding(VectorChunk[] out, float[] queryEmbedding) {
         // 単純検索.
         int i;
         final int len = documents.length;
